@@ -16,9 +16,77 @@ namespace ModelCreation
         {
             Document document = commandData.Application.ActiveUIDocument.Document;
 
-            List<Wall> walls = CreateWalls(document);
+            var levelsList = GetLevels(document);
+
+            var baseLevel = levelsList
+                .Where(x => x.Name.Equals("Уровень 1"))
+                .FirstOrDefault();
+
+            var level2 = levelsList
+                .Where(x => x.Name.Equals("Уровень 2"))
+                .FirstOrDefault();
+
+            List<Wall> walls = CreateWalls(document, baseLevel, level2);
+
+            AddDoor(document, baseLevel, walls[0]);
+            AddWindows(document, baseLevel, walls.GetRange(1, 3));
 
             return Result.Succeeded;
+        }
+
+        private void AddWindows(Document document, Level baseLevel, List<Wall> walls)
+        {
+            FamilySymbol windowType = new FilteredElementCollector(document)
+                  .OfClass(typeof(FamilySymbol))
+                  .OfCategory(BuiltInCategory.OST_Windows)
+                  .OfType<FamilySymbol>()
+                  .Where(x => x.Name.Equals("0915 x 1220 мм"))
+                  .Where(x => x.FamilyName.Equals("Фиксированные"))
+                  .FirstOrDefault();
+
+            Transaction transaction = new Transaction(document, "Add window");
+            transaction.Start();
+
+            if (!windowType.IsActive)
+                windowType.Activate();
+
+            foreach (var wall in walls)
+            {
+                LocationCurve hostCurve = wall.Location as LocationCurve;
+                XYZ point1 = hostCurve.Curve.GetEndPoint(0);
+                XYZ point2 = hostCurve.Curve.GetEndPoint(1);
+                XYZ middlePoint = (point1 + point2) / 2;
+                XYZ placementPoint = new XYZ(middlePoint.X, middlePoint.Y, wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM).AsDouble() / 2);
+
+                document.Create.NewFamilyInstance(placementPoint, windowType, wall, baseLevel, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
+            }
+
+            transaction.Commit();
+        }
+
+        private void AddDoor(Document document, Level baseLevel, Wall wall)
+        {
+            FamilySymbol doorType = new FilteredElementCollector(document)
+                .OfClass(typeof(FamilySymbol))
+                .OfCategory(BuiltInCategory.OST_Doors)
+                .OfType<FamilySymbol>()
+                .Where(x => x.Name.Equals("0915 x 2134 мм"))
+                .Where(x => x.FamilyName.Equals("Одиночные-Щитовые"))
+                .FirstOrDefault();
+
+            LocationCurve hostCurve = wall.Location as LocationCurve;
+            XYZ point1 = hostCurve.Curve.GetEndPoint(0);
+            XYZ point2 = hostCurve.Curve.GetEndPoint(1);
+            XYZ placementPoint = (point1 + point2) / 2;
+
+            Transaction transaction = new Transaction(document, "Add door");
+            transaction.Start();
+
+            if (!doorType.IsActive)
+                doorType.Activate();
+
+            document.Create.NewFamilyInstance(placementPoint, doorType, wall, baseLevel, Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
+            transaction.Commit();
         }
 
         public List<Level> GetLevels(Document document)
@@ -29,18 +97,8 @@ namespace ModelCreation
                 .ToList();
         }
 
-        public List<Wall> CreateWalls(Document document)
+        public List<Wall> CreateWalls(Document document, Level level1, Level level2)
         {
-            var levelsList = GetLevels(document);
-
-            var level1 = levelsList
-                .Where(x => x.Name.Equals("Уровень 1"))
-                .FirstOrDefault();
-
-            var level2 = levelsList
-                .Where(x => x.Name.Equals("Уровень 2"))
-                .FirstOrDefault();
-
             double width = UnitUtils.ConvertToInternalUnits(10000, DisplayUnitType.DUT_MILLIMETERS);
             double depth = UnitUtils.ConvertToInternalUnits(5000, DisplayUnitType.DUT_MILLIMETERS);
 
